@@ -1,33 +1,29 @@
 """
-main.py — FastAPI ingestion service (Days 6-7)
+main.py — FastAPI ingestion service (Days 6-9)
 
 Wraps the compiled C++ anomaly detection engine (via pybind11) behind
 two HTTP endpoints:
 
-  POST /ingest     - submit one meter reading, get back whether it's anomalous
-  GET  /anomalies   - see everything flagged so far
+  POST /ingest      - submit one meter reading, get back whether it's anomalous
+  GET  /anomalies    - see everything flagged so far
 
-Results are held in memory for now — Days 8-9 will move this to
-PostgreSQL so nothing is lost on restart.
+As of Days 8-9, results are persisted in PostgreSQL instead of an
+in-memory list, so nothing is lost when the server restarts.
 """
 
 from datetime import datetime
-from typing import List
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 import smart_grid_engine as engine
+import db
 
 app = FastAPI(title="Smart Grid Anomaly Detection API")
 
 # One detector instance, shared across all requests, so each meter's
 # rolling statistics persist between calls instead of resetting every time.
 detector = engine.RollingZScoreDetector(threshold=3.0, warmup_readings=5, window_size=20)
-
-# In-memory store of anomalies seen so far. Replaced by a real database
-# in Days 8-9 — this is just enough to prove the API works end-to-end.
-anomaly_log: List[dict] = []
 
 
 class Reading(BaseModel):
@@ -47,18 +43,29 @@ class IngestResponse(BaseModel):
 
 @app.post("/ingest", response_model=IngestResponse)
 def ingest_reading(reading: Reading):
-    """Feed one reading through the C++ engine and record it if anomalous."""
+    """Feed one reading through the C++ engine, then persist it to Postgres."""
     result = detector.process(reading.meter_id, reading.kwh)
 
+    # Every reading gets logged, anomalous or not — this is the full
+    # audit trail described in the schema design.
+    reading_id = db.insert_reading(
+        meter_id=reading.meter_id,
+        timestamp=reading.timestamp,
+        kwh=reading.kwh,
+        is_anomaly=result.is_anomaly,
+        z_score=result.z_score,
+        rolling_mean=result.rolling_mean,
+    )
+
     if result.is_anomaly:
-        anomaly_log.append({
-            "meter_id": reading.meter_id,
-            "timestamp": reading.timestamp,
-            "kwh": reading.kwh,
-            "z_score": result.z_score,
-            "rolling_mean": result.rolling_mean,
-            "detected_at": datetime.utcnow().isoformat(),
-        })
+        db.insert_anomaly(
+            reading_id=reading_id,
+            meter_id=reading.meter_id,
+            timestamp=reading.timestamp,
+            kwh=reading.kwh,
+            z_score=result.z_score,
+            rolling_mean=result.rolling_mean,
+        )
 
     return IngestResponse(
         meter_id=reading.meter_id,
@@ -72,8 +79,9 @@ def ingest_reading(reading: Reading):
 
 @app.get("/anomalies")
 def get_anomalies():
-    """Return everything flagged as anomalous so far."""
-    return {"count": len(anomaly_log), "anomalies": anomaly_log}
+    """Return everything flagged as anomalous so far, read from Postgres."""
+    anomalies = db.fetch_anomalies()
+    return {"count": len(anomalies), "anomalies": anomalies}
 
 
 @app.get("/")

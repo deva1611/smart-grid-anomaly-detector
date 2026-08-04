@@ -8,3 +8,4 @@ data/raw/
 *.csvservice/
 app/
 *.pyd
+.env
