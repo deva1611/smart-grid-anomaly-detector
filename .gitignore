@@ -5,4 +5,6 @@ build/
 *.exe
 .vscode/
 data/raw/
-*.csv
+*.csvservice/
+app/
+*.pyd
