@@ -1,0 +1,53 @@
+# docker-compose.yml
+#
+# Brings up the whole stack with one command: a PostgreSQL database and
+# the FastAPI service (with the C++ engine built inside it), wired
+# together so they can reach each other over Docker's internal network.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smart_grid
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # Persists data across restarts, so the database survives
+      # `docker-compose down` and back up again.
+      - pgdata:/var/lib/postgresql/data
+      # The official postgres image automatically runs any .sql files
+      # found here on first startup — this is what creates our schema
+      # without needing a custom Postgres Dockerfile.
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      # Waits for Postgres to actually be ready to accept connections,
+      # not just for its container to have started — avoids a race
+      # condition where the API tries to connect before the DB is up.
+      postgres:
+        condition: service_healthy
+    environment:
+      # Inside Docker's network, containers reach each other by service
+      # name, not "localhost" — "postgres" here refers to the service
+      # defined above, resolved automatically by Docker's internal DNS.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: smart_grid
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:

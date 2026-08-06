@@ -1,0 +1,8 @@
+engine/build/
+service/app/*.pyd
+service/app/*.so
+data/raw/*.csv
+.git/
+.env
+__pycache__/
+*.pyc
