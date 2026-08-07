@@ -1,11 +1,10 @@
-__pycache__/
+﻿__pycache__/
 *.pyc
 build/
 *.o
 *.exe
 .vscode/
 data/raw/
-*.csvservice/
-app/
-*.pyd
+*.csv
+service/app/*.pyd
 .env
