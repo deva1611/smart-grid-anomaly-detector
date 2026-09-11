@@ -1,4 +1,6 @@
-﻿# Smart Grid Anomaly Detection System
+# Smart Grid Anomaly Detection System
+
+[![CI](https://github.com/deva1611/smart-grid-anomaly-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/deva1611/smart-grid-anomaly-detector/actions/workflows/ci.yml)
 
 **Live demo:** https://smart-grid-anomaly-detector.onrender.com/docs
 *(free-tier instance — spins down when idle, so the first request may take ~50 seconds to wake up)*
